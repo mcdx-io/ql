@@ -209,6 +209,11 @@ pub enum CallOp {
     Var,
     Std,
     Count,
+    /// Offset lookup: `LAG(series, N)` is the value of `series` at bar `t-N`.
+    /// A windowed op (one series/expr argument plus a window/period `N`), in the
+    /// AVG/VAR/STD/COUNT family, but instead of reducing the window it returns the
+    /// single value at its far end. Warm only once `t-N` exists (needs N+1 bars).
+    Lag,
     Ret,
     Tr,
     Ema,
@@ -243,6 +248,7 @@ impl CallOp {
             "VAR" => Self::Var,
             "STD" => Self::Std,
             "COUNT" => Self::Count,
+            "LAG" => Self::Lag,
             "RET" => Self::Ret,
             "TR" => Self::Tr,
             "EMA" => Self::Ema,
@@ -277,6 +283,7 @@ impl CallOp {
             Self::Var => "VAR",
             Self::Std => "STD",
             Self::Count => "COUNT",
+            Self::Lag => "LAG",
             Self::Ret => "RET",
             Self::Tr => "TR",
             Self::Ema => "EMA",

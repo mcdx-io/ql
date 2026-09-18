@@ -751,6 +751,22 @@ impl<'a> AnalyzeCtx<'a> {
                 self.max_lookback = self.max_lookback.max(period);
                 self.walk_expr(&args[0])?;
             }
+            CallOp::Lag => {
+                // LAG(series, N) = the value at bar t-N. Same one-arg-plus-window
+                // shape as AVG, but it returns the far end of the window instead of
+                // reducing it, so it is only warm once t-N exists — that needs N+1
+                // bars of history (cf. the Rma/Rsi `period + 1` arms below).
+                if args.len() != 1 {
+                    return Err(Error::sem(
+                        format!("{} expects one series/expr argument plus window", op.as_str()),
+                        self.expr_src,
+                        Some(pos),
+                    ));
+                }
+                let period = self.window_period(window, pos)?;
+                self.max_lookback = self.max_lookback.max(period + 1);
+                self.walk_expr(&args[0])?;
+            }
             CallOp::Ema => {
                 self.needs_closes_to_date = true;
                 if args.len() != 1 {
@@ -1451,6 +1467,17 @@ mod tests {
             }
             other => panic!("expected absolute, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn analyzes_lag_lookback_is_period_plus_one() {
+        // LAG needs the bar N back, so max_lookback = N + 1 (unlike AVG's N).
+        let src = "LAG([close.1h], $n)";
+        let batch = parse_batch(src).unwrap();
+        let p = BTreeMap::from([("n".into(), ParamValue::Int(24))]);
+        let a = analyze(&batch, &p, src).unwrap();
+        assert_eq!(a.max_lookback, 25);
+        assert_eq!(a.reporting_period, "1h");
     }
 
     #[test]
