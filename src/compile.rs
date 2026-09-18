@@ -533,6 +533,28 @@ impl Codegen<'_> {
                     series_key: inner.series_key,
                 })
             }
+            CallOp::Lag => {
+                // Offset lookup: the value of the inner series N bars back. Postgres
+                // `LAG(v, N)` is an OFFSET window function, not an aggregate, so the
+                // OVER clause carries ONLY the partition/order (the same expression
+                // RET/TR use) and takes NO ROWS frame — the offset is the `N` arg.
+                let inner = self.gen_expr(&args[0])?;
+                let period = self.resolve_period(window, pos)?;
+                let lagged = format!(
+                    "LAG({v}, {n}) OVER (PARTITION BY e.coin, e.seg_key ORDER BY e.timestamp_start)",
+                    v = inner.value_sql,
+                    n = period
+                );
+                Ok(Frag {
+                    // Warm once the bar N back exists — LAG returns NULL until then
+                    // (mirrors TR's `lag_close IS NOT NULL` warmup gate).
+                    warmup_sql: format!("({lagged} IS NOT NULL)"),
+                    value_sql: lagged,
+                    version_sql: "e.version".into(),
+                    period: None,
+                    series_key: inner.series_key,
+                })
+            }
             CallOp::Ema => {
                 let _inner = self.gen_expr(&args[0])?;
                 let period = self.resolve_period(window, pos)?;

@@ -324,6 +324,27 @@ mod tests {
     }
 
     #[test]
+    fn compile_json_lag() {
+        let req = r#"{
+            "expr": "LAG([close.1h; $from:$to], 24)",
+            "assets": ["BTC"],
+            "params": {"from": 100, "to": 200}
+        }"#;
+        let out = compile_json(req);
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["ok"], true, "{out}");
+        let sql = v["sql"].as_str().unwrap();
+        // Offset window function: LAG(<inner>, N) OVER partition/order, no ROWS frame.
+        assert!(
+            sql.contains(
+                "LAG(e.close, 24) OVER (PARTITION BY e.coin, e.seg_key ORDER BY e.timestamp_start)"
+            ),
+            "{sql}"
+        );
+        assert_eq!(v["reporting_period"], "1h");
+    }
+
+    #[test]
     fn compile_json_unaggregated_source() {
         let req = r#"{
             "expr": "AVG([binance:close.1d; $from:$to], $period)",

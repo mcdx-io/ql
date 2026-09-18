@@ -938,6 +938,7 @@ fn op_takes_window(op: CallOp) -> bool {
             | CallOp::Var
             | CallOp::Std
             | CallOp::Count
+            | CallOp::Lag
             | CallOp::Ema
             | CallOp::Rma
             | CallOp::Rsi
@@ -948,6 +949,51 @@ fn op_takes_window(op: CallOp) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_lag_literal_window() {
+        // `LAG([close.1h], 24)` — one series arg plus an integer trailing window.
+        let e = parse_expr("LAG([close.1h], 24)").unwrap();
+        match e {
+            Expr::Call {
+                op: CallOp::Lag,
+                window:
+                    Some(WindowSpec::Trailing {
+                        period: TrailingPeriod::Int { value: 24, .. },
+                    }),
+                args,
+                ..
+            } => match &args[0] {
+                Expr::Series(s) => {
+                    assert_eq!(args.len(), 1);
+                    assert_eq!(s.name, "close");
+                    assert_eq!(s.bucket, "1h");
+                }
+                other => panic!("{other:?}"),
+            },
+            other => panic!("unexpected: {other:?}"),
+        }
+        // op name round-trips through parse()/as_str().
+        assert_eq!(CallOp::parse("LAG"), Some(CallOp::Lag));
+        assert_eq!(CallOp::Lag.as_str(), "LAG");
+    }
+
+    #[test]
+    fn parses_lag_param_window() {
+        // `$param` window binds identically to AVG's period.
+        let e = parse_expr("LAG([close.1h], $n)").unwrap();
+        match e {
+            Expr::Call {
+                op: CallOp::Lag,
+                window:
+                    Some(WindowSpec::Trailing {
+                        period: TrailingPeriod::Param { name, .. },
+                    }),
+                ..
+            } => assert_eq!(name, "n"),
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
 
     #[test]
     fn parses_avg_trailing_sugar() {
